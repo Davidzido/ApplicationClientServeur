@@ -45,12 +45,16 @@ public class Main {
 		return vie;
 	}
 
+	public static void setVie(int vie) {
+		Main.vie = vie;
+	}
+
 	public static String getMot() {
 		return mot;
 	}
-
-	public static char[] getCharUsed() {
-		return charUsed;
+	
+	public static void setMot(String mot) {
+		Main.mot = mot;
 	}
 
 	public static void main(String[] args) {
@@ -59,9 +63,11 @@ public class Main {
 			ServerSocket serverSocket = new ServerSocket(port);
 			ExecutorService pool = Executors.newFixedThreadPool(10);
 			
-			mot = genereMot();
+			setMot("tortue");
+			setVie(2);
 			setPlayerRotation(0);
-			
+			//Crée la solution partielle a partir du mot
+			HangmanServer.setSolutionPartielleInitiale();
 			while (true) {
 				System.out.println("About to accept client connection...");
 
@@ -69,10 +75,11 @@ public class Main {
 
 				System.out.println("Accepted the connection from " + clientSocket.toString());
 
-				// Game g�re la communication avec le clientSocket
+				// Game gère la communication avec le clientSocket
 				Game game = new Game(clientSocket);
 				clientList.add(game);
 				pool.execute(game);
+				System.out.println("PlayerCount = "+getPlayerCount());
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -86,10 +93,4 @@ public class Main {
 		
 	}
 	
-	private static String genereMot() {
-		return "tortue";
-	}
-	
-	
-
 }
