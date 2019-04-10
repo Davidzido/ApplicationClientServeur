@@ -9,47 +9,42 @@ public class Game implements Runnable {
 
 	// Fields
 	private Socket clientSocket;
-	private HangmanClient bonhommePendu = new HangmanClient();
-	private boolean isPlayerTurn;
+	
+	
 	private boolean isGameStarted;
+	private boolean isDisplaySent;
+	private boolean hasReceivePlayerInput;
 
 	DataOutputStream dataOutputStream;
 	DataInputStream dataInputStream;
 	InputStream inputStream;
-	PrintWriter printWriter;
+	PrintWriter output;
+	private static Scanner input;
 
 	public Game(Socket clientSocket) throws IOException {
 		// Declaring fields
 		this.clientSocket = clientSocket;
-		//
-		dataOutputStream = new DataOutputStream(clientSocket.getOutputStream());
-		dataInputStream = new DataInputStream(clientSocket.getInputStream());
-		//
+		
 		inputStream = clientSocket.getInputStream();
-		printWriter = new PrintWriter(clientSocket.getOutputStream(), true);
+		output = new PrintWriter(clientSocket.getOutputStream(), true);
+		input = new Scanner(clientSocket.getInputStream());
 	}
 
 	public void run() {
 		// 2 joueurs doivent se connecter pour commencer une partie
-		while (clientSocket.isConnected()) {
+		while (Main.getVie() > 0) {
 			try {
 				
-				// Check if the players are connected and ready
-				if (!arePlayersReady()) {
-					sendMsgToClient("En attente de joueurs");
-					continue;
-				}
-				
+
 				//Start the game
-				if(arePlayersReady() && !isGameStarted) {
-					//Pr�parer la partie
-					setup();
+				if(HangmanServer.arePlayersReady() && !isGameStarted) {
+					//Préparer la partie
 					isGameStarted = true;
-					continue;
+					setup();
 				}
 				
 				// Receive and handle packet
-				if(arePlayersReady() && isGameStarted) {
+				if(HangmanServer.arePlayersReady() && isGameStarted) {
 				handleGameState();
 				}
 				
@@ -64,8 +59,15 @@ public class Game implements Runnable {
 	
 	private void setup() {
 		//Envoie un message pour dire que la partie est commencer
-		printWriter.println(true);
-		//Ask the main to generate a random word
+		System.out.println("isGameStarted = "+ isGameStarted);
+		//output.println(isGameStarted);
+		output.print(true);
+		output.print(true);
+		output.print(true);
+		output.print(true);
+		output.print(true);
+		//Crée la solution partielle a partir du mot.
+		HangmanServer.setSolutionPartielleInitiale();
 		
 	}
 
@@ -86,23 +88,19 @@ public class Game implements Runnable {
 		output.close();
 		clientSocket.close();
 	}
-
-	/**
-	 * 
-	 * @return true si les joueurs sont pr�ts � jouer
-	 */
-	public boolean arePlayersReady() {
-		return (Main.getPlayerCount() > 0) ? true : false;
+	
+	public static Scanner getInput() throws IOException {
+		return input;
 	}
 
 	/**
-	 * Permet d'envoyer un message msg � un client
+	 * Permet d'envoyer un message msg à un client
 	 * 
-	 * @param msg Message � envoyer
+	 * @param msg Message à envoyer
 	 * @throws IOException
 	 */
 	public void sendMsgToClient(String msg) throws IOException, InterruptedException {
-		printWriter.println(msg);
+		output.println(msg);
 		clientSocket.getOutputStream().flush();
 	}
 
@@ -112,44 +110,72 @@ public class Game implements Runnable {
 	 * @throws InterruptedException
 	 */
 	public void sendPlayerStatus() throws IOException, InterruptedException {
-		printWriter.println(isPlayerTurn());
+		//output.println(isPlayerTurn());
+		output.println(isPlayerTurn());
 		clientSocket.getOutputStream().flush();
 	}
 	
-	/**
-	 * 
-	 * @param vie
-	 * @throws IOException
-	 */
-	public void sendPacket(int vie) throws IOException {
-		printWriter.print(vie);
-		clientSocket.getOutputStream().flush();
-	}
-	
-	/**
-	 * 
-	 * @param list
-	 * @throws IOException
-	 */
-	public void sendPacket(char[] list) throws IOException {
-		printWriter.print(list);
-		clientSocket.getOutputStream().flush();
-	}
-	/**
-	 * 
-	 * @param solutionPartiel
-	 * @throws IOException
-	 */
-	public void sendPacket(String solutionPartiel) throws IOException {
-		printWriter.print(solutionPartiel);
+	public void sendPacket(int vie, char[] charUsed, char[] solutionPartiel) throws IOException {
+		output.println(String.valueOf(vie)+":"+String.copyValueOf(charUsed)+":"+String.copyValueOf(solutionPartiel));
 		clientSocket.getOutputStream().flush();
 	}
 
 	public void handleGameState() throws IOException, InterruptedException {
 		//Send the client wether or not its his turn to player that ufcking dwdqe qweqweqw
 		sendPlayerStatus();
-		//
+		//System.out.println("isPlayerTurn() = "+isPlayerTurn());
+		
+		if(isPlayerTurn()) {
+			
+			if(!isDisplaySent) {
+				
+				sendPacket(Main.getVie(), HangmanServer.getCharUsed(), HangmanServer.getSolutionPartielle());
+				isDisplaySent = false;
+			}
+			
+			char playerInput = getInput().nextLine().charAt(0);
+
+			//-Request player input()[]
+			if(playerInput != ' ') {
+			//CHECK PLAYER INPUT
+			checkEssaiInput(playerInput);
+			//ENDTURN
+			Main.setPlayerRotation(Main.getPlayerRotation() + 1);
+			//Send the display one last time
+			sendPacket(Main.getVie(), HangmanServer.getCharUsed(), HangmanServer.getSolutionPartielle());
+			}
+			else {
+			//SEND FEEDBACK
+			sendMsgToClient("ATTENTION:");
+			sendMsgToClient("Veuillez entrer une lettre!");
+			}
+			
+		}
 	}
+	
+	public void checkEssaiInput(char essai) throws IOException, InterruptedException {
+		// mettre les inputs en minuscule
+		essai = Character.toLowerCase(essai);
+		
+		if(HangmanServer.isInputDuplicate(essai)) {
+			sendMsgToClient("ATTENTION: La lettre a déja été essayé!");
+			//Enleve une vie
+			Main.setVie(Main.getVie() - 1);
+		}
+		else if(!HangmanServer.isInputDuplicate(essai)) {
+			//Compare avec mot
+			if (Main.getMot().contains(String.valueOf(essai))) {
+				sendMsgToClient("Bravo la lettre "+essai+" se trouve dans le mot caché.");
+				HangmanServer.updateSolutionPartielle(essai);
+			}
+			else if (!Main.getMot().contains(String.valueOf(essai))) {
+				sendMsgToClient("Ouch la lettre "+essai+" ne se trouve pas dans le mot caché.");
+				//Enleve une vie
+				Main.setVie(Main.getVie() - 1);
+			}
+		}
+	}
+	
 	/**
 	 * 
 	 * @return
